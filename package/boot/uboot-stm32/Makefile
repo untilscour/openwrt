@@ -8,7 +8,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_VERSION:=2026.01
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_HASH:=b60d5865cefdbc75da8da4156c56c458e00de75a49b80c1a2e58a96e30ad0d54
 PKG_MAINTAINER:=Thomas Richard <thomas.richard@bootlin.com>
