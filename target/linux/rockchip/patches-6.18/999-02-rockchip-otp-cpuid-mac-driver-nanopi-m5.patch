@@ -1,0 +1,66 @@
+From: Ryan Leung <untilscour@protonmail.com>
+Date: Tue, 17 Oct 2026 06:54:49 +0000
+Subject: [PATCH] rockchip_otp_cpuid_mac_driver for NanoPi M5
+
+Signed-off-by: Ryan Leung <untilscour@protonmail.com>
+---
+
+--- a/arch/arm64/boot/dts/rockchip/rk3576-nanopi-m5.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3576-nanopi-m5.dts
+@@ -19,10 +19,8 @@
+ 	model = "FriendlyElec NanoPi M5";
+ 	compatible = "friendlyarm,nanopi-m5", "rockchip,rk3576";
+ 
+ 	aliases {
+-		ethernet0 = &gmac0;
+-		ethernet1 = &gmac1;
+ 		mmc0 = &sdmmc;
+ 
+ 		led-boot = &led_sys;
+ 		led-failsafe = &led_sys;
+@@ -117,8 +115,23 @@
+ 			pinctrl-0 = <&led2_h>;
+ 		};
+ 	};
+ 
++	otp_mac: otp-mac {
++		compatible = "rockchip,otp-cpuid-mac";
++
++		nvmem-cells = <&otp_id>;
++		nvmem-cell-names = "source";
++
++		#address-cells = <1>;
++		#size-cells = <1>;
++
++		otp_mac_address: mac-address@0 {
++			reg = <0 0x6>;
++			#nvmem-cell-cells = <1>;
++		};
++	};
++
+ 	usb3_port2_5v: regulator-usb3-port2-5v {
+ 		compatible = "regulator-fixed";
+ 		enable-active-high;
+ 		gpios = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>;
+@@ -333,8 +346,10 @@
+ 		    <&eth0m0_rx_bus2>,
+ 		    <&eth0m0_rgmii_clk>,
+ 		    <&eth0m0_rgmii_bus>;
+ 	status = "okay";
++	nvmem-cells = <&otp_mac_address 0>;
++	nvmem-cell-names = "mac-address";
+ };
+ 
+ &gmac1 {
+ 	clock_in_out = "output";
+@@ -347,8 +362,10 @@
+ 		    <&eth1m0_rx_bus2>,
+ 		    <&eth1m0_rgmii_clk>,
+ 		    <&eth1m0_rgmii_bus>;
+ 	status = "okay";
++	nvmem-cells = <&otp_mac_address 1>;
++	nvmem-cell-names = "mac-address";
+ };
+ 
+ &gpu {
+ 	mali-supply = <&vdd_gpu_s0>;
