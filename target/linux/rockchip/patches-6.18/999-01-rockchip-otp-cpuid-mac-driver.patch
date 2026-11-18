@@ -1,0 +1,150 @@
+From: Ryan Leung <untilscour@protonmail.com>
+Date: Tue, 17 Oct 2026 06:54:47 +0000
+Subject: [PATCH] rockchip_otp_cpuid_mac_driver
+
+Signed-off-by: Ryan Leung <untilscour@protonmail.com>
+---
+
+--- /dev/null
++++ b/drivers/nvmem/rockchip-otp-cpuid-mac.c
+@@ -0,0 +1,127 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * NVMEM provider for MAC addresses derived from the CPU ID in
++ * Rockchip OTP memory, replicating the derivation performed by
++ * Rockchip bootloaders.
++ */
++
++#include <crypto/sha2.h>
++#include <linux/etherdevice.h>
++#include <linux/hex.h>
++#include <linux/limits.h>
++#include <linux/module.h>
++#include <linux/nvmem-consumer.h>
++#include <linux/nvmem-provider.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <uapi/linux/if_ether.h>
++
++#define ROCKCHIP_CPUID_LEN	16
++
++struct rockchip_otp_cpuid_mac {
++	u8 base[ETH_ALEN];
++};
++
++static int rockchip_otp_cpuid_mac_read(void *priv, unsigned int offset,
++				     void *val, size_t bytes)
++{
++	struct rockchip_otp_cpuid_mac *data = priv;
++
++	memcpy(val, data->base + offset, bytes);
++
++	return 0;
++}
++
++static int rockchip_otp_cpuid_mac_pp(void *priv, const char *id, int index,
++				     unsigned int offset, void *buf,
++				     size_t bytes)
++{
++	u8 *mac = buf;
++
++	if (index < 0 || index > U8_MAX)
++		return -EINVAL;
++
++	mac[5] ^= index;
++
++	return 0;
++}
++
++static void rockchip_otp_cpuid_mac_fixup(struct nvmem_device *nvmem,
++					 struct nvmem_cell_info *cell)
++{
++	cell->read_post_process = rockchip_otp_cpuid_mac_pp;
++}
++
++static int rockchip_otp_cpuid_mac_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct rockchip_otp_cpuid_mac *data;
++	char cpuid_hex[ROCKCHIP_CPUID_LEN * 2];
++	u8 digest[SHA256_DIGEST_SIZE];
++	struct nvmem_config cfg = { };
++	struct nvmem_cell *cell;
++	void *cpuid;
++	ssize_t len;
++
++	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
++	if (!data)
++		return -ENOMEM;
++
++	cell = devm_nvmem_cell_get(dev, "source");
++	if (IS_ERR(cell))
++		return dev_err_probe(dev, PTR_ERR(cell),
++				     "failed to get source cell\n");
++
++	cpuid = nvmem_cell_read(cell, &len);
++	if (IS_ERR(cpuid))
++		return dev_err_probe(dev, PTR_ERR(cpuid),
++				     "failed to read source cell\n");
++
++	if (len != ROCKCHIP_CPUID_LEN) {
++		kfree(cpuid);
++		return dev_err_probe(dev, -EINVAL,
++				     "unexpected CPU ID length %zd\n", len);
++	}
++
++	bin2hex(cpuid_hex, cpuid, ROCKCHIP_CPUID_LEN);
++	kfree(cpuid);
++
++	sha256(cpuid_hex, sizeof(cpuid_hex), digest);
++
++	memcpy(data->base, digest, ETH_ALEN);
++	data->base[0] &= 0xfe;		/* clear the multicast bit */
++	data->base[0] |= 0x02;		/* set the locally administered bit */
++
++	cfg.dev = dev;
++	cfg.name = "rockchip-otp-cpuid-mac";
++	cfg.id = NVMEM_DEVID_NONE;
++	cfg.owner = THIS_MODULE;
++	cfg.reg_read = rockchip_otp_cpuid_mac_read;
++	cfg.fixup_dt_cell_info = rockchip_otp_cpuid_mac_fixup;
++	cfg.size = ETH_ALEN;
++	cfg.word_size = 1;
++	cfg.stride = 1;
++	cfg.read_only = true;
++	cfg.priv = data;
++
++	return PTR_ERR_OR_ZERO(devm_nvmem_register(dev, &cfg));
++}
++
++static const struct of_device_id rockchip_otp_cpuid_mac_of_match[] = {
++	{ .compatible = "rockchip,otp-cpuid-mac" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, rockchip_otp_cpuid_mac_of_match);
++
++static struct platform_driver rockchip_otp_cpuid_mac_driver = {
++	.probe = rockchip_otp_cpuid_mac_probe,
++	.driver = {
++		.name = "rockchip-otp-cpuid-mac",
++		.of_match_table = rockchip_otp_cpuid_mac_of_match,
++	},
++};
++module_platform_driver(rockchip_otp_cpuid_mac_driver);
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Ryan Leung <untilscour@protonmail.com>");
++MODULE_DESCRIPTION("NVMEM provider for MAC addresses derived from the Rockchip OTP CPU ID");
+--- a/drivers/nvmem/Makefile
++++ b/drivers/nvmem/Makefile
+@@ -65,8 +65,10 @@
+ obj-$(CONFIG_NVMEM_ROCKCHIP_EFUSE)	+= nvmem_rockchip_efuse.o
+ nvmem_rockchip_efuse-y			:= rockchip-efuse.o
+ obj-$(CONFIG_NVMEM_ROCKCHIP_OTP)	+= nvmem-rockchip-otp.o
+ nvmem-rockchip-otp-y			:= rockchip-otp.o
++obj-$(CONFIG_NVMEM)			+= nvmem_rockchip_otp_cpuid_mac.o
++nvmem_rockchip_otp_cpuid_mac-y		:= rockchip-otp-cpuid-mac.o
+ obj-$(CONFIG_NVMEM_SC27XX_EFUSE)	+= nvmem-sc27xx-efuse.o
+ nvmem-sc27xx-efuse-y			:= sc27xx-efuse.o
+ obj-$(CONFIG_NVMEM_SNVS_LPGPR)		+= nvmem_snvs_lpgpr.o
+ nvmem_snvs_lpgpr-y			:= snvs_lpgpr.o
